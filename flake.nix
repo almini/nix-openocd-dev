@@ -5,76 +5,95 @@
     nixpkgs.url = "github:NixOS/nixpkgs";
   };
 
-  outputs = {self, nixpkgs}: {
-    defaultPackage.x86_64-linux =
-      with import nixpkgs { system = "x86_64-linux"; };
+  outputs = {self, nixpkgs}: 
+    let
 
-      stdenv.mkDerivation rec {
-        pname = "openocd";
-        version = "0.11.0+dev-snapshot";
+      supportedSystems =
+        [ "x86_64-linux" "x86_64-darwin" "aarch64-linux" "aarch64-darwin" ];
 
-        src = fetchgit {
-          url = "https://github.com/openocd-org/openocd.git";
-          rev = "f77c919cf4dd25d3540bdef7d0bf60f5b84d5dd6";
-          sha256 = "sha256-d23TRVAS9hpeUhaVHeZAId4WcE3oGTeObu7FoW4g3ck=";
-          fetchSubmodules = true;
-        };
+      # Helper function to generate an attrset '{ x86_64-linux = f "x86_64-linux"; ... }'.
+      forAllSystems = nixpkgs.lib.genAttrs supportedSystems;
 
-        nativeBuildInputs = [ pkg-config which libtool automake autoconf ];
+      # Nixpkgs instantiated for supported system types.
+      nixpkgsFor = forAllSystems (system: import nixpkgs { inherit system; });
 
-        buildInputs = [ hidapi libftdi1 libusb1 ]
-          ++ lib.optional stdenv.isLinux libgpiod;
+    in {
 
-        preConfigure = ''
-          SKIP_SUBMODULE=1 ./bootstrap
-        '';
+      packages = forAllSystems (system:
+        let pkgs = nixpkgsFor.${system};
+        in {
+          openocd-dev = 
+            with pkgs;
+            stdenv.mkDerivation rec {
+              pname = "openocd";
+              version = "0.11.0+dev-snapshot";
 
-        configureFlags = [
-          "--disable-werror"
-          "--enable-jtag_vpi"
-          "--enable-usb_blaster_libftdi"
-          (lib.enableFeature (! stdenv.isDarwin) "amtjtagaccel")
-          (lib.enableFeature (! stdenv.isDarwin) "gw16012")
-          "--enable-presto_libftdi"
-          "--enable-openjtag_ftdi"
-          (lib.enableFeature (! stdenv.isDarwin) "oocd_trace")
-          "--enable-buspirate"
-          (lib.enableFeature stdenv.isLinux "sysfsgpio")
-          (lib.enableFeature stdenv.isLinux "linuxgpiod")
-          "--enable-remote-bitbang"
-        ];
+              src = fetchgit {
+                url = "https://github.com/openocd-org/openocd.git";
+                rev = "f77c919cf4dd25d3540bdef7d0bf60f5b84d5dd6";
+                sha256 = "sha256-d23TRVAS9hpeUhaVHeZAId4WcE3oGTeObu7FoW4g3ck=";
+                fetchSubmodules = true;
+              };
 
-        NIX_CFLAGS_COMPILE = lib.optionals stdenv.cc.isGNU [
-          "-Wno-error=cpp"
-          "-Wno-error=strict-prototypes" # fixes build failure with hidapi 0.10.0
-        ];
+              nativeBuildInputs = [ pkg-config which libtool automake autoconf ];
 
-        postInstall = lib.optionalString stdenv.isLinux ''
-          mkdir -p "$out/etc/udev/rules.d"
-          rules="$out/share/openocd/contrib/60-openocd.rules"
-          if [ ! -f "$rules" ]; then
-              echo "$rules is missing, must update the Nix file."
-              exit 1
-          fi
-          ln -s "$rules" "$out/etc/udev/rules.d/"
-        '';
+              buildInputs = [ hidapi libftdi1 libusb1 ]
+                ++ lib.optional stdenv.isLinux libgpiod;
 
-        meta = with lib; {
-          description = "Free and Open On-Chip Debugging, In-System Programming and Boundary-Scan Testing";
-          longDescription = ''
-          OpenOCD provides on-chip programming and debugging support with a layered
-          architecture of JTAG interface and TAP support, debug target support
-          (e.g. ARM, MIPS), and flash chip drivers (e.g. CFI, NAND, etc.).  Several
-          network interfaces are available for interactiving with OpenOCD: HTTP,
-          telnet, TCL, and GDB.  The GDB server enables OpenOCD to function as a
-          "remote target" for source-level debugging of embedded systems using the
-          GNU GDB program.
-          '';
-          homepage = "https://openocd.sourceforge.net/";
-          license = licenses.gpl2Plus;
-          maintainers = with maintainers; [ bjornfor prusnak ];
-          platforms = platforms.unix;
-        };
-      };
-  };
+              preConfigure = ''
+                SKIP_SUBMODULE=1 ./bootstrap
+              '';
+
+              configureFlags = [
+                "--disable-werror"
+                "--enable-jtag_vpi"
+                "--enable-usb_blaster_libftdi"
+                (lib.enableFeature (! stdenv.isDarwin) "amtjtagaccel")
+                (lib.enableFeature (! stdenv.isDarwin) "gw16012")
+                "--enable-presto_libftdi"
+                "--enable-openjtag_ftdi"
+                (lib.enableFeature (! stdenv.isDarwin) "oocd_trace")
+                "--enable-buspirate"
+                (lib.enableFeature stdenv.isLinux "sysfsgpio")
+                (lib.enableFeature stdenv.isLinux "linuxgpiod")
+                "--enable-remote-bitbang"
+              ];
+
+              NIX_CFLAGS_COMPILE = lib.optionals stdenv.cc.isGNU [
+                "-Wno-error=cpp"
+                "-Wno-error=strict-prototypes" # fixes build failure with hidapi 0.10.0
+              ];
+
+              postInstall = lib.optionalString stdenv.isLinux ''
+                mkdir -p "$out/etc/udev/rules.d"
+                rules="$out/share/openocd/contrib/60-openocd.rules"
+                if [ ! -f "$rules" ]; then
+                    echo "$rules is missing, must update the Nix file."
+                    exit 1
+                fi
+                ln -s "$rules" "$out/etc/udev/rules.d/"
+              '';
+
+              meta = with lib; {
+                description = "Free and Open On-Chip Debugging, In-System Programming and Boundary-Scan Testing";
+                longDescription = ''
+                OpenOCD provides on-chip programming and debugging support with a layered
+                architecture of JTAG interface and TAP support, debug target support
+                (e.g. ARM, MIPS), and flash chip drivers (e.g. CFI, NAND, etc.).  Several
+                network interfaces are available for interactiving with OpenOCD: HTTP,
+                telnet, TCL, and GDB.  The GDB server enables OpenOCD to function as a
+                "remote target" for source-level debugging of embedded systems using the
+                GNU GDB program.
+                '';
+                homepage = "https://openocd.sourceforge.net/";
+                license = licenses.gpl2Plus;
+                maintainers = with maintainers; [ bjornfor prusnak ];
+                platforms = platforms.unix;
+              };
+            };
+        });
+
+      defaultPackage = forAllSystems (system: self.packages.${system}.openocd-dev);
+      
+    };
 }
