@@ -22,7 +22,7 @@
       packages = forAllSystems (system:
         let pkgs = nixpkgsFor.${system};
         in {
-          openocd-dev = 
+          default = 
             with pkgs;
             stdenv.mkDerivation rec {
               pname = "openocd";
@@ -92,8 +92,6 @@
               };
             };
         });
-
-      defaultPackage = forAllSystems (system: self.packages.${system}.openocd-dev);
-      
+        
     };
 }
